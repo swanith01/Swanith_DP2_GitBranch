@@ -1,0 +1,31 @@
+cat > run_v3_lightcones.pbs << 'EOF'
+#!/bin/bash
+#PBS -N v3_1Gpc_lightcone
+#PBS -q workq
+#PBS -l nodes=8:ppn=28
+#PBS -l walltime=48:00:00
+#PBS -j oe
+#PBS -o v3_lightcone_job.log
+
+cd $PBS_O_WORKDIR
+source activate p21c_v3
+
+TIMESTAMP=$(date +"%d%b%Y_%H%M")
+output_dir="v3_lightcones_${TIMESTAMP}"
+cache_dir="${output_dir}/_cache"
+mkdir -p $cache_dir
+
+echo "=================================================="
+echo "Job started      : $(date)"
+echo "Job ID           : $PBS_JOBID"
+echo "Nodes            : $(uniq $PBS_NODEFILE | wc -l)"
+echo "Total threads    : $(wc -l < $PBS_NODEFILE)"
+echo "Output directory : $output_dir"
+echo "=================================================="
+
+python Swanith_v3_lightcones_to_cluster.py
+
+echo "=================================================="
+echo "Job finished     : $(date)"
+echo "=================================================="
+EOF
