@@ -1,0 +1,72 @@
+#!/bin/bash
+# =============================================================================
+# run_production.pbs  —  FULL SCIENCE RUN (20 seeds, 48 hr)
+#
+# Only submit AFTER the test run passes cleanly.
+#
+# Submit with:
+#   qsub run_production.pbs
+# =============================================================================
+
+#PBS -N kSZ_production
+#PBS -q workq
+#PBS -l select=1:ncpus=32:mem=128gb
+#PBS -l walltime=48:00:00
+#PBS -j oe
+#PBS -o /user1/swanith/1Jun2026_kSZ_sqr_21cm_sqr/logs/production_job.log
+
+set -euo pipefail
+
+WORK_DIR="/user1/swanith"
+PROJECT="1Jun2026_kSZ_sqr_21cm_sqr"
+RUN_DIR="${WORK_DIR}/${PROJECT}"
+LOG_DIR="${RUN_DIR}/logs"
+CACHE_DIR="${RUN_DIR}/cache"
+PLOT_DIR="${RUN_DIR}/plots"
+CODE_DIR="${WORK_DIR}/kSZ_code"
+
+mkdir -p "${LOG_DIR}" "${CACHE_DIR}" "${PLOT_DIR}"
+
+echo "============================================================"
+echo "  JOB  : ${PBS_JOBID}"
+echo "  NODE : $(hostname)"
+echo "  DATE : $(date)"
+echo "  DIR  : ${RUN_DIR}"
+echo "============================================================"
+
+source /user1/swanith/miniconda3/etc/profile.d/conda.sh
+conda activate p21c_v3
+
+python -c "import py21cmfast; print('py21cmfast version:', py21cmfast.__version__)"
+
+export RUN_MODE="production"
+export OMP_NUM_THREADS=8
+export NUMEXPR_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+export NPY_NUM_BUILD_JOBS=8
+
+export BOXDIR="${CACHE_DIR}/21cmfast_boxes"
+mkdir -p "${BOXDIR}"
+
+cd "${CODE_DIR}"
+
+echo "============================================================"
+echo "  STARTING PRODUCTION RUN at $(date)"
+echo "============================================================"
+
+time python kSZ_Squared_21cm_QMaStyle.py \
+     > "${LOG_DIR}/production_stdout.log" \
+     2> "${LOG_DIR}/production_stderr.log"
+
+EXIT_CODE=$?
+
+echo "============================================================"
+echo "  FINISHED at $(date)   exit_code=${EXIT_CODE}"
+echo "============================================================"
+
+find "${CACHE_DIR}" -name "*.npy" | wc -l
+find "${PLOT_DIR}"  -name "*.png" -o -name "*.pdf" | wc -l
+du -sh "${RUN_DIR}"
+
+exit ${EXIT_CODE}

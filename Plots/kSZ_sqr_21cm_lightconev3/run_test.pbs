@@ -1,0 +1,121 @@
+#!/bin/bash
+# =============================================================================
+# run_test.pbs  —  SMOKE TEST (tiny box, 2 seeds, ~10-20 min)
+#
+# Submit with:
+#   qsub run_test.pbs
+#
+# Check status:
+#   qstat -u swanith
+#
+# Watch live log:
+#   tail -f 1Jun2026_kSZ_sqr_21cm_sqr_TEST/logs/test_job.log
+# =============================================================================
+
+#PBS -N kSZ_test
+#PBS -q workq
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+#PBS -o /user1/swanith/1Jun2026_kSZ_sqr_21cm_sqr_TEST/logs/test_job.log
+
+# =============================================================================
+# 0. Strict error handling
+# =============================================================================
+set -euo pipefail
+
+# =============================================================================
+# 1. Paths — everything lives under one dated directory
+# =============================================================================
+WORK_DIR="/user1/swanith"
+PROJECT="1Jun2026_kSZ_sqr_21cm_sqr"
+RUN_TAG="${PROJECT}_TEST"
+RUN_DIR="${WORK_DIR}/${RUN_TAG}"
+LOG_DIR="${RUN_DIR}/logs"
+CACHE_DIR="${RUN_DIR}/cache"
+PLOT_DIR="${RUN_DIR}/plots"
+CODE_DIR="${WORK_DIR}/kSZ_code"          # ← adjust if your code lives elsewhere
+
+mkdir -p "${LOG_DIR}" "${CACHE_DIR}" "${PLOT_DIR}"
+
+echo "============================================================"
+echo "  JOB  : ${PBS_JOBID}"
+echo "  NODE : $(hostname)"
+echo "  DATE : $(date)"
+echo "  DIR  : ${RUN_DIR}"
+echo "============================================================"
+
+# =============================================================================
+# 2. Activate conda environment
+# =============================================================================
+source /user1/swanith/miniconda3/etc/profile.d/conda.sh
+conda activate p21c_v3
+
+echo "Python : $(which python)"
+echo "Version: $(python --version)"
+
+# Quick sanity — py21cmfast importable?
+python -c "import py21cmfast; print('py21cmfast version:', py21cmfast.__version__)"
+
+# =============================================================================
+# 3. Environment variables
+# =============================================================================
+
+# Tell the code which mode to run
+export RUN_MODE="test"
+
+# py21cmfast uses OpenMP internally; cap threads to what we requested
+export OMP_NUM_THREADS=4
+export NUMEXPR_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+# Prevent numpy from over-subscribing
+export NPY_NUM_BUILD_JOBS=4
+
+# py21cmfast cache — point to our dated directory
+export BOXDIR="${CACHE_DIR}/21cmfast_boxes"
+mkdir -p "${BOXDIR}"
+
+# =============================================================================
+# 4. Copy / link code into run directory (keeps outputs self-contained)
+# =============================================================================
+cd "${CODE_DIR}"
+
+echo ""
+echo "--- Files in code directory ---"
+ls -lh *.py
+
+# =============================================================================
+# 5. Run
+# =============================================================================
+echo ""
+echo "============================================================"
+echo "  STARTING TEST RUN at $(date)"
+echo "============================================================"
+
+time python kSZ_Squared_21cm_QMaStyle.py \
+     > "${LOG_DIR}/test_stdout.log" \
+     2> "${LOG_DIR}/test_stderr.log"
+
+EXIT_CODE=$?
+
+echo ""
+echo "============================================================"
+echo "  FINISHED at $(date)   exit_code=${EXIT_CODE}"
+echo "============================================================"
+
+# =============================================================================
+# 6. Quick output check
+# =============================================================================
+echo ""
+echo "--- Cache contents ---"
+find "${CACHE_DIR}" -name "*.npy" | head -20
+echo ""
+echo "--- Plot outputs ---"
+find "${PLOT_DIR}"  -name "*.png" -o -name "*.pdf" | head -20
+echo ""
+echo "--- Disk usage ---"
+du -sh "${RUN_DIR}"
+
+exit ${EXIT_CODE}
